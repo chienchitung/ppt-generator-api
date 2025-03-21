@@ -1,0 +1,71 @@
+{
+    "title": "電商App競品分析報告",
+    "date": "2024-03-21",
+    "apps": [
+        {
+            "name": "測試應用",
+            "ratings": {
+                "ios": 4.5,
+                "android": 4.3
+            },
+            "reviews": {
+                "stats": {
+                    "positive": 85,
+                    "negative": 15
+                },
+                "analysis": {
+                    "advantages": [
+                        "介面設計直觀",
+                        "商品搜尋功能強大",
+                        "結帳流程順暢"
+                    ],
+                    "improvements": [
+                        "載入速度較慢",
+                        "客服回應時間長",
+                        "商品分類不夠清晰"
+                    ],
+                    "summary": "整體表現良好，但仍有改進空間"
+                }
+            },
+            "features": {
+                "core": [
+                    "商品搜尋",
+                    "購物車管理",
+                    "訂單追蹤",
+                    "會員系統"
+                ],
+                "advantages": [
+                    "智能推薦系統",
+                    "多元支付方式",
+                    "即時庫存查詢"
+                ],
+                "improvements": [
+                    "社群功能整合",
+                    "商品評價系統",
+                    "客服系統"
+                ]
+            },
+            "uxScores": {
+                "memberlogin": 90,
+                "search": 85,
+                "product": 88,
+                "checkout": 92,
+                "service": 75,
+                "other": 86
+            },
+            "uxAnalysis": {
+                "strengths": [
+                    "登入流程簡單快速",
+                    "商品頁面資訊完整",
+                    "結帳流程順暢"
+                ],
+                "improvements": [
+                    "優化載入速度",
+                    "改進客服系統",
+                    "增加社群互動功能"
+                ],
+                "summary": "用戶體驗整體良好，主要需要改進的是系統性能和客服體驗"
+            }
+        }
+    ]
+} 

@@ -541,7 +541,7 @@ def add_summary_slide(prs, summary_data):
     start_left = (prs.slide_width - total_width) / 2
     top = Inches(2.2)  # 位於標題下方
     
-    # ===== 左方框：數據支持 =====
+    # ===== 左方框：關鍵數據 =====
     # 1. 創建方框
     data_box = shapes.add_shape(
         MSO_SHAPE.RECTANGLE,  # 使用矩形，不是圓角矩形
@@ -557,7 +557,7 @@ def add_summary_slide(prs, summary_data):
         column_width, Inches(0.6)
     )
     data_title_para = data_title.text_frame.add_paragraph()
-    data_title_para.text = "數據支持"
+    data_title_para.text = "關鍵數據"
     data_title_para.font.size = Pt(24)
     data_title_para.font.bold = True
     data_title_para.font.color.rgb = RGBColor(30, 144, 255)

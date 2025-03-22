@@ -57,9 +57,11 @@ async def generate_ppt(input_file: UploadFile = File(...)):
             try:
                 json_content = json.loads(content)
                 logger.info("JSON content validated successfully")
-            except json.JSONDecodeError:
-                logger.error("Invalid JSON content received")
-                raise HTTPException(status_code=400, detail="Invalid JSON file")
+                # Log the structure of the JSON content
+                logger.info(f"JSON content structure: {json.dumps({k: type(v).__name__ for k, v in json_content.items()})}")
+            except json.JSONDecodeError as e:
+                logger.error(f"Invalid JSON content received: {str(e)}")
+                raise HTTPException(status_code=400, detail=f"Invalid JSON file: {str(e)}")
             
             # Write content to temporary file
             try:
@@ -71,23 +73,33 @@ async def generate_ppt(input_file: UploadFile = File(...)):
                 raise HTTPException(status_code=500, detail=f"Error writing temporary file: {str(e)}")
             
             # Generate output filename
-            timestamp = Path(input_file.filename).stem
-            output_filename = f"{timestamp}_analysis.pptx"
+            output_filename = f"data_analysis.pptx"
             output_path = os.path.join(STORAGE_DIR, output_filename)
             logger.info(f"Output path set to: {output_path}")
             
             # Generate PPT
             try:
+                # Ensure the storage directory exists
+                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                
+                # Generate the PPT
                 generate_competitive_analysis_ppt(temp_input_path, output_path)
                 logger.info(f"Generated PPT at: {output_path}")
             except Exception as e:
-                logger.error(f"Error generating PPT: {str(e)}")
+                logger.error(f"Error generating PPT: {str(e)}", exc_info=True)
+                if hasattr(e, '__traceback__'):
+                    import traceback
+                    logger.error(f"Full traceback: {''.join(traceback.format_tb(e.__traceback__))}")
                 raise HTTPException(status_code=500, detail=f"Error generating PPT: {str(e)}")
             
-            # Verify file exists
+            # Verify file exists and has content
             if not os.path.exists(output_path):
                 logger.error(f"Generated file not found at: {output_path}")
                 raise HTTPException(status_code=500, detail="Generated file not found")
+            
+            if os.path.getsize(output_path) == 0:
+                logger.error(f"Generated file is empty: {output_path}")
+                raise HTTPException(status_code=500, detail="Generated file is empty")
             
             response_data = GenerationResponse(
                 message="PPT generated successfully",
@@ -96,9 +108,14 @@ async def generate_ppt(input_file: UploadFile = File(...)):
             logger.info(f"Returning response: {response_data}")
             return response_data
             
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Unexpected error in generate_ppt: {str(e)}", exc_info=True)
+        if hasattr(e, '__traceback__'):
+            import traceback
+            logger.error(f"Full traceback: {''.join(traceback.format_tb(e.__traceback__))}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
 @app.get("/download/{filename}")
 async def download_ppt(filename: str):

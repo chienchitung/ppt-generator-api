@@ -814,35 +814,82 @@ def add_app_analysis_slide(prs, app):
     )
 
 def generate_competitive_analysis_ppt(input_file: str, output_file: str):
+    """Generate a competitive analysis PowerPoint presentation."""
     try:
-        # Read input data
-        with open(input_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+        logger.info(f"Starting PPT generation with input file: {input_file}")
         
+        # Load and validate input data
+        try:
+            with open(input_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                logger.info("Successfully loaded input JSON file")
+        except Exception as e:
+            logger.error(f"Error loading input file: {str(e)}")
+            raise ValueError(f"Failed to load input file: {str(e)}")
+
+        # Validate required fields
+        required_fields = ['title', 'date', 'apps']
+        missing_fields = [field for field in required_fields if field not in data]
+        if missing_fields:
+            error_msg = f"Missing required fields in input data: {', '.join(missing_fields)}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
         # Create presentation
-        prs = Presentation()
-        set_slide_size_to_16x9(prs)
-        
+        try:
+            prs = Presentation()
+            set_slide_size_to_16x9(prs)
+            logger.info("Created new presentation with 16:9 aspect ratio")
+        except Exception as e:
+            logger.error(f"Error creating presentation: {str(e)}")
+            raise RuntimeError(f"Failed to create presentation: {str(e)}")
+
         # Add title slide
-        add_title_slide(prs, data['title'], data['date'])
-        
-        # Process each app's detailed analysis with new layout
-        for app in data['apps']:
-            add_app_analysis_slide(prs, app)
-        
-        # Add summary section before ending
-        if 'summary' in data:
-            add_section_slide(prs, "總結分析")
-            add_summary_slide(prs, data['summary'])
-        
+        try:
+            add_title_slide(prs, data['title'], data['date'])
+            logger.info("Added title slide")
+        except Exception as e:
+            logger.error(f"Error adding title slide: {str(e)}")
+            raise RuntimeError(f"Failed to add title slide: {str(e)}")
+
+        # Add content for each app
+        try:
+            for app in data['apps']:
+                logger.info(f"Processing app: {app.get('name', 'Unknown')}")
+                add_app_analysis_slide(prs, app)
+        except Exception as e:
+            logger.error(f"Error processing app data: {str(e)}")
+            raise RuntimeError(f"Failed to process app data: {str(e)}")
+
+        # Add summary slide
+        try:
+            if 'summary' in data:
+                add_summary_slide(prs, data['summary'])
+                logger.info("Added summary slide")
+        except Exception as e:
+            logger.error(f"Error adding summary slide: {str(e)}")
+            raise RuntimeError(f"Failed to add summary slide: {str(e)}")
+
         # Add ending slide
-        add_ending_slide(prs)
-        
+        try:
+            add_ending_slide(prs)
+            logger.info("Added ending slide")
+        except Exception as e:
+            logger.error(f"Error adding ending slide: {str(e)}")
+            raise RuntimeError(f"Failed to add ending slide: {str(e)}")
+
         # Save presentation
-        prs.save(output_file)
-        logger.info(f"Presentation saved to {output_file}")
-        return True
-        
+        try:
+            # Ensure the output directory exists
+            os.makedirs(os.path.dirname(output_file), exist_ok=True)
+            prs.save(output_file)
+            logger.info(f"Successfully saved presentation to: {output_file}")
+        except Exception as e:
+            logger.error(f"Error saving presentation: {str(e)}")
+            raise RuntimeError(f"Failed to save presentation: {str(e)}")
+
     except Exception as e:
-        logger.error(f"Error generating PPT: {str(e)}")
-        raise 
+        logger.error(f"Error in generate_competitive_analysis_ppt: {str(e)}", exc_info=True)
+        raise
+
+    return output_file 

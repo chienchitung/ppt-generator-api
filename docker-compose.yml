@@ -9,9 +9,8 @@ services:
       - ppt_data:/app/storage/generated_ppts
     environment:
       - TZ=Asia/Taipei
-      - ALLOWED_ORIGINS=http://localhost:3000,https://app-reviews-ai-v3.vercel.app
+      - ALLOWED_ORIGINS=*
       - STORAGE_DIR=/app/storage/generated_ppts
-      - CORS_ALLOW_CREDENTIALS=true
     restart: unless-stopped
 
 volumes:

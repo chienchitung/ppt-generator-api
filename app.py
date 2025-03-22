@@ -15,7 +15,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Get allowed origins from environment variable
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+if "*" in ALLOWED_ORIGINS:
+    ALLOWED_ORIGINS = ["*"]
 logger.info(f"Configured ALLOWED_ORIGINS: {ALLOWED_ORIGINS}")
 
 # Configure storage
@@ -32,10 +34,12 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,  # 使用環境變數中設定的允許來源
-    allow_methods=["GET", "POST", "OPTIONS"],  # 明確指定允許的 HTTP 方法
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["Content-Disposition"],  # 允許前端讀取檔案下載相關的 header
+    expose_headers=["*"],
+    max_age=86400,
 )
 
 class GenerationResponse(BaseModel):
@@ -134,7 +138,9 @@ async def download_ppt(filename: str):
             filename=filename
         )
         # 添加 CORS headers
-        response.headers["Access-Control-Allow-Origin"] = ALLOWED_ORIGINS[0]
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "*"
         return response
     except Exception as e:
         logger.error(f"Error during file download: {str(e)}")

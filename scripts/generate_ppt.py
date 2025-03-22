@@ -14,6 +14,13 @@ import locale
 import requests
 from io import BytesIO
 from datetime import datetime
+import warnings
+from PIL import Image
+import tempfile
+import os
+
+# Suppress InsecureRequestWarning
+warnings.filterwarnings("ignore", category=requests.packages.urllib3.exceptions.InsecureRequestWarning)
 
 # Set locale to handle Chinese characters
 try:
@@ -31,13 +38,87 @@ except locale.Error:
 logging.basicConfig(level=logging.INFO, encoding='utf-8')
 logger = logging.getLogger(__name__)
 
+def convert_webp_to_png(webp_data):
+    """Convert WebP image to PNG format"""
+    try:
+        image = Image.open(webp_data)
+        logger.info(f"Image opened successfully, format: {image.format}, mode: {image.mode}, size: {image.size}")
+        
+        # Convert to RGB mode if needed
+        if image.mode in ('RGBA', 'LA') or (image.mode == 'P' and 'transparency' in image.info):
+            logger.info("Converting image with alpha channel...")
+            # Create a white background
+            background = Image.new('RGBA', image.size, (255, 255, 255))
+            # Paste the image using alpha channel as mask
+            if image.mode == 'RGBA':
+                background.paste(image, mask=image.split()[3])
+            else:
+                background.paste(image)
+            # Convert to RGB
+            image = background.convert('RGB')
+        else:
+            logger.info(f"Converting image without alpha channel from mode: {image.mode}")
+            image = image.convert('RGB')
+        
+        # Save as PNG
+        output = BytesIO()
+        image.save(output, format="PNG")
+        output.seek(0)
+        logger.info("Image successfully converted to PNG")
+        return output
+    except Exception as e:
+        logger.error(f"Error converting WebP to PNG: {str(e)}")
+        # Try a different approach as fallback
+        try:
+            logger.info("Trying alternative conversion method...")
+            image = Image.open(webp_data)
+            output = BytesIO()
+            # Try saving as JPEG if PNG fails
+            image.convert('RGB').save(output, format="JPEG")
+            output.seek(0)
+            logger.info("Image successfully converted to JPEG as fallback")
+            return output
+        except Exception as e2:
+            logger.error(f"Error in fallback conversion: {str(e2)}")
+            return None
+
 def download_image(url):
     try:
-        response = requests.get(url)
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        response = requests.get(url, headers=headers, verify=False, timeout=10)
         response.raise_for_status()
-        return BytesIO(response.content)
-    except Exception as e:
+        image_data = BytesIO(response.content)
+        
+        # Check if it's a WebP image and convert if needed
+        if url.lower().endswith('.webp') or '.webp' in url.lower():
+            logger.info(f"Converting WebP image from {url} to PNG")
+            return convert_webp_to_png(image_data)
+        
+        return image_data
+    except requests.exceptions.SSLError as e:
+        logger.error(f"SSL Error downloading image from {url}: {str(e)}")
+        try:
+            # Retry without SSL verification
+            response = requests.get(url, headers=headers, verify=False, timeout=10)
+            response.raise_for_status()
+            image_data = BytesIO(response.content)
+            
+            # Check if it's a WebP image and convert if needed
+            if url.lower().endswith('.webp') or '.webp' in url.lower():
+                logger.info(f"Converting WebP image from {url} to PNG")
+                return convert_webp_to_png(image_data)
+            
+            return image_data
+        except Exception as e:
+            logger.error(f"Error retrying download without SSL verification from {url}: {str(e)}")
+            return None
+    except requests.exceptions.RequestException as e:
         logger.error(f"Error downloading image from {url}: {str(e)}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error downloading image from {url}: {str(e)}")
         return None
 
 def set_slide_size_to_16x9(prs):
@@ -46,9 +127,10 @@ def set_slide_size_to_16x9(prs):
 
 def add_title_slide(prs, title, subtitle):
     slide = prs.slides.add_slide(prs.slide_layouts[0])
+    shapes = slide.shapes
     
     # Add background shape
-    background = slide.shapes.add_shape(
+    background = shapes.add_shape(
         MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height
     )
     background.fill.solid()
@@ -56,7 +138,7 @@ def add_title_slide(prs, title, subtitle):
     background.line.fill.background()
 
     # Add decorative elements
-    left_bar = slide.shapes.add_shape(
+    left_bar = shapes.add_shape(
         MSO_SHAPE.RECTANGLE, 0, 0, Inches(1), prs.slide_height
     )
     left_bar.fill.solid()
@@ -64,7 +146,7 @@ def add_title_slide(prs, title, subtitle):
     left_bar.line.fill.background()
 
     # Add title
-    title_box = slide.shapes.add_textbox(
+    title_box = shapes.add_textbox(
         Inches(2), Inches(3), Inches(12), Inches(1.5)
     )
     title_frame = title_box.text_frame
@@ -76,7 +158,7 @@ def add_title_slide(prs, title, subtitle):
     title_para.alignment = PP_ALIGN.LEFT
 
     # Add subtitle (date)
-    subtitle_box = slide.shapes.add_textbox(
+    subtitle_box = shapes.add_textbox(
         Inches(2), Inches(4.5), Inches(12), Inches(1)
     )
     subtitle_frame = subtitle_box.text_frame
@@ -88,9 +170,10 @@ def add_title_slide(prs, title, subtitle):
 
 def add_section_slide(prs, title):
     slide = prs.slides.add_slide(prs.slide_layouts[2])
+    shapes = slide.shapes
     
     # Add gradient background
-    background = slide.shapes.add_shape(
+    background = shapes.add_shape(
         MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height
     )
     background.fill.solid()
@@ -98,7 +181,7 @@ def add_section_slide(prs, title):
     background.line.fill.background()
 
     # Add title
-    title_box = slide.shapes.add_textbox(
+    title_box = shapes.add_textbox(
         Inches(2), Inches(3), Inches(12), Inches(1.5)
     )
     title_frame = title_box.text_frame
@@ -110,7 +193,7 @@ def add_section_slide(prs, title):
     title_para.alignment = PP_ALIGN.LEFT
     
     # Add decorative line
-    line = slide.shapes.add_shape(
+    line = shapes.add_shape(
         MSO_SHAPE.RECTANGLE,
         Inches(2),
         Inches(4.5),
@@ -121,12 +204,58 @@ def add_section_slide(prs, title):
     line.fill.fore_color.rgb = RGBColor(30, 144, 255)
     line.line.fill.background()
 
-def add_content_slide(prs, title, content, app_icon_url=None):
+def download_and_convert_image(url, app_name):
+    """Download image and convert to PNG if needed, saving it to a temp file to ensure reliability"""
+    try:
+        logger.info(f"Downloading and processing image for {app_name} from: {url}")
+        
+        # Create temporary directory
+        temp_dir = tempfile.mkdtemp()
+        temp_input_path = os.path.join(temp_dir, f"{app_name}_original")
+        temp_output_path = os.path.join(temp_dir, f"{app_name}_converted.png")
+        
+        # Download image
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        response = requests.get(url, headers=headers, verify=False, timeout=10)
+        response.raise_for_status()
+        
+        # Save original image
+        with open(temp_input_path, 'wb') as f:
+            f.write(response.content)
+        
+        # Open and convert
+        with Image.open(temp_input_path) as img:
+            logger.info(f"Image format: {img.format}, mode: {img.mode}, size: {img.size}")
+            
+            # Convert to RGB
+            if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
+                background = Image.new('RGBA', img.size, (255, 255, 255))
+                if img.mode == 'RGBA':
+                    background.paste(img, mask=img.split()[3])
+                else:
+                    background.paste(img)
+                img = background.convert('RGB')
+            else:
+                img = img.convert('RGB')
+                
+            # Save as PNG
+            img.save(temp_output_path, 'PNG')
+            logger.info(f"Image saved to: {temp_output_path}")
+            
+            # Return file path for adding to slide
+            return temp_output_path
+    except Exception as e:
+        logger.error(f"Error in download_and_convert_image: {str(e)}")
+        return None
+
+def add_content_slide(prs, title, content, app_icon_url=None, app_name=None):
     slide = prs.slides.add_slide(prs.slide_layouts[1])
     shapes = slide.shapes
     
     # Add subtle background
-    background = slide.shapes.add_shape(
+    background = shapes.add_shape(
         MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height
     )
     background.fill.solid()
@@ -134,24 +263,49 @@ def add_content_slide(prs, title, content, app_icon_url=None):
     background.line.fill.background()
     
     # Add title with app icon if available
-    title_left = Inches(1)
-    if app_icon_url:
-        try:
-            icon_image = download_image(app_icon_url)
-            if icon_image:
-                icon = slide.shapes.add_picture(
-                    icon_image,
-                    Inches(1),
-                    Inches(0.5),
-                    height=Inches(1)
-                )
-                title_left = Inches(2.2)
-        except Exception as e:
-            logger.error(f"Error adding app icon: {str(e)}")
+    title_left = Inches(1)  # 標題預設位置
+    title_width = Inches(13)  # 標題預設寬度
     
+    if app_icon_url and app_name:
+        try:
+            # Use the local file conversion approach
+            local_image_path = download_and_convert_image(app_icon_url, app_name)
+            
+            if local_image_path and os.path.exists(local_image_path):
+                logger.info(f"Adding image from local path: {local_image_path}")
+                # 將圖示放在右上角 (右邊減去圖片寬度減去間隔)
+                icon = shapes.add_picture(
+                    local_image_path,
+                    prs.slide_width - Inches(1.5),  # 右邊位置
+                    Inches(0.5),  # 上方位置
+                    height=Inches(1)  # 高度
+                )
+                # 保持標題在左側，但縮短標題寬度避免與圖示重疊
+                title_width = Inches(11)
+                logger.info("Image successfully added to slide from local file at right corner")
+                
+                # Clean up temp files
+                try:
+                    os.remove(local_image_path)
+                    # Remove the original image file as well
+                    original_path = os.path.join(os.path.dirname(local_image_path), f"{app_name}_original")
+                    if os.path.exists(original_path):
+                        os.remove(original_path)
+                    # Remove the temp directory
+                    temp_dir = os.path.dirname(local_image_path)
+                    if os.path.exists(temp_dir):
+                        os.rmdir(temp_dir)
+                except Exception as cleanup_error:
+                    logger.warning(f"Error cleaning up temp files: {str(cleanup_error)}")
+            else:
+                logger.warning("Local image file not created, skipping add_picture")
+        except Exception as e:
+            logger.error(f"Error adding app icon from local file: {str(e)}")
+    
+    # Add title (不再移動標題位置，只調整寬度)
     title_box = shapes.add_textbox(
         title_left, Inches(0.5),
-        Inches(13), Inches(1)
+        title_width, Inches(1)
     )
     title_frame = title_box.text_frame
     title_para = title_frame.add_paragraph()
@@ -202,7 +356,7 @@ def add_comparison_slide(prs, title, apps_data):
     shapes = slide.shapes
     
     # Add background
-    background = slide.shapes.add_shape(
+    background = shapes.add_shape(
         MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height
     )
     background.fill.solid()
@@ -252,7 +406,7 @@ def add_chapter_slide(prs, chapter_data):
     shapes = slide.shapes
     
     # Add background
-    background = slide.shapes.add_shape(
+    background = shapes.add_shape(
         MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height
     )
     background.fill.solid()
@@ -310,9 +464,10 @@ def add_chapter_slide(prs, chapter_data):
 
 def add_ending_slide(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[0])
+    shapes = slide.shapes
     
     # Add background shape
-    background = slide.shapes.add_shape(
+    background = shapes.add_shape(
         MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height
     )
     background.fill.solid()
@@ -320,7 +475,7 @@ def add_ending_slide(prs):
     background.line.fill.background()
 
     # Add decorative elements
-    left_bar = slide.shapes.add_shape(
+    left_bar = shapes.add_shape(
         MSO_SHAPE.RECTANGLE, 0, 0, Inches(1), prs.slide_height
     )
     left_bar.fill.solid()
@@ -328,7 +483,7 @@ def add_ending_slide(prs):
     left_bar.line.fill.background()
 
     # Add title
-    title_box = slide.shapes.add_textbox(
+    title_box = shapes.add_textbox(
         Inches(2), Inches(3), Inches(12), Inches(1.5)
     )
     title_frame = title_box.text_frame
@@ -340,7 +495,7 @@ def add_ending_slide(prs):
     title_para.alignment = PP_ALIGN.LEFT
 
     # Add subtitle
-    subtitle_box = slide.shapes.add_textbox(
+    subtitle_box = shapes.add_textbox(
         Inches(2), Inches(4.5), Inches(12), Inches(1)
     )
     subtitle_frame = subtitle_box.text_frame
@@ -350,84 +505,343 @@ def add_ending_slide(prs):
     subtitle_para.font.color.rgb = RGBColor(100, 100, 100)
     subtitle_para.alignment = PP_ALIGN.LEFT
 
+def add_summary_slide(prs, summary_data):
+    """Add a summary slide with the exact layout shown in image 2."""
+    slide = prs.slides.add_slide(prs.slide_layouts[1])
+    shapes = slide.shapes
+    
+    # 添加白色背景
+    background = shapes.add_shape(
+        MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height
+    )
+    background.fill.solid()
+    background.fill.fore_color.rgb = RGBColor(255, 255, 255)  # 純白色背景
+    background.line.fill.background()
+    
+    # 添加標題
+    title_box = shapes.add_textbox(
+        Inches(1), Inches(0.5),
+        Inches(14), Inches(1)
+    )
+    title_frame = title_box.text_frame
+    title_para = title_frame.add_paragraph()
+    title_para.text = "競品分析總結"
+    title_para.font.size = Pt(40)
+    title_para.font.bold = True
+    title_para.font.color.rgb = RGBColor(30, 144, 255)
+    title_para.alignment = PP_ALIGN.CENTER
+    
+    # 三個方框的佈局
+    column_width = Inches(4.5)
+    column_height = Inches(5.5)
+    gap = Inches(0.7)
+    
+    # 計算三個方框的起始位置，確保居中
+    total_width = column_width * 3 + gap * 2
+    start_left = (prs.slide_width - total_width) / 2
+    top = Inches(2.2)  # 位於標題下方
+    
+    # ===== 左方框：數據支持 =====
+    # 1. 創建方框
+    data_box = shapes.add_shape(
+        MSO_SHAPE.RECTANGLE,  # 使用矩形，不是圓角矩形
+        start_left, top, column_width, column_height
+    )
+    data_box.fill.solid()
+    data_box.fill.fore_color.rgb = RGBColor(240, 248, 255)  # 淺藍色背景
+    data_box.line.color.rgb = RGBColor(173, 216, 230)  # 藍色邊框，較淺
+    
+    # 2. 添加標題
+    data_title = shapes.add_textbox(
+        start_left, top + Inches(0.4),
+        column_width, Inches(0.6)
+    )
+    data_title_para = data_title.text_frame.add_paragraph()
+    data_title_para.text = "數據支持"
+    data_title_para.font.size = Pt(24)
+    data_title_para.font.bold = True
+    data_title_para.font.color.rgb = RGBColor(30, 144, 255)
+    data_title_para.alignment = PP_ALIGN.CENTER
+    
+    # 4. 添加內容
+    data_content = shapes.add_textbox(
+        start_left + Inches(0.3), top + Inches(1.3),
+        column_width - Inches(0.6), column_height - Inches(1.5)
+    )
+    data_content.text_frame.word_wrap = True
+    
+    for item in summary_data['dataSupport']:
+        p = data_content.text_frame.add_paragraph()
+        p.text = f"• {item}"
+        p.font.size = Pt(16)
+        p.font.color.rgb = RGBColor(60, 60, 60)
+        p.space_after = Pt(10)  # 段落間距
+    
+    # ===== 中間方框：關鍵發現 =====
+    # 1. 創建方框
+    middle_left = start_left + column_width + gap
+    findings_box = shapes.add_shape(
+        MSO_SHAPE.RECTANGLE,  # 使用矩形
+        middle_left, top, column_width, column_height
+    )
+    findings_box.fill.solid()
+    findings_box.fill.fore_color.rgb = RGBColor(240, 255, 240)  # 淺綠色背景
+    findings_box.line.color.rgb = RGBColor(144, 238, 144)  # 淺綠色邊框
+    
+    # 2. 添加標題
+    findings_title = shapes.add_textbox(
+        middle_left, top + Inches(0.4),
+        column_width, Inches(0.6)
+    )
+    findings_title_para = findings_title.text_frame.add_paragraph()
+    findings_title_para.text = "關鍵發現"
+    findings_title_para.font.size = Pt(24)
+    findings_title_para.font.bold = True
+    findings_title_para.font.color.rgb = RGBColor(46, 204, 113)
+    findings_title_para.alignment = PP_ALIGN.CENTER
+    
+    # 4. 添加內容
+    findings_content = shapes.add_textbox(
+        middle_left + Inches(0.3), top + Inches(1.3),
+        column_width - Inches(0.6), column_height - Inches(1.5)
+    )
+    findings_content.text_frame.word_wrap = True
+    
+    for item in summary_data['keyFindings']:
+        p = findings_content.text_frame.add_paragraph()
+        p.text = f"• {item}"
+        p.font.size = Pt(16)
+        p.font.color.rgb = RGBColor(60, 60, 60)
+        p.space_after = Pt(10)  # 段落間距
+    
+    # ===== 右方框：具體建議 =====
+    # 1. 創建方框
+    right_left = middle_left + column_width + gap
+    recom_box = shapes.add_shape(
+        MSO_SHAPE.RECTANGLE,  # 使用矩形
+        right_left, top, column_width, column_height
+    )
+    recom_box.fill.solid()
+    recom_box.fill.fore_color.rgb = RGBColor(255, 248, 240)  # 淺橙色背景
+    recom_box.line.color.rgb = RGBColor(250, 214, 165)  # 淺橙色邊框
+    
+    # 2. 添加標題
+    recom_title = shapes.add_textbox(
+        right_left, top + Inches(0.4),
+        column_width, Inches(0.6)
+    )
+    recom_title_para = recom_title.text_frame.add_paragraph()
+    recom_title_para.text = "具體建議"
+    recom_title_para.font.size = Pt(24)
+    recom_title_para.font.bold = True
+    recom_title_para.font.color.rgb = RGBColor(230, 126, 34)
+    recom_title_para.alignment = PP_ALIGN.CENTER
+    
+    # 3. 添加內容
+    recom_content = shapes.add_textbox(
+        right_left + Inches(0.3), top + Inches(1.3),
+        column_width - Inches(0.6), column_height - Inches(1.5)
+    )
+    recom_content.text_frame.word_wrap = True
+    
+    for item in summary_data['recommendations']:
+        p = recom_content.text_frame.add_paragraph()
+        p.text = f"• {item}"
+        p.font.size = Pt(16)
+        p.font.color.rgb = RGBColor(60, 60, 60)
+        p.space_after = Pt(10)  # 段落間距
+    
+    return slide
+
+def add_app_header_slide(prs, app_name, app_logo_url):
+    """創建應用程式分析的標題頁面，風格與總結分析頁面一致"""
+    slide = prs.slides.add_slide(prs.slide_layouts[1])
+    shapes = slide.shapes
+    
+    # 添加淺藍灰色背景，與總結分析頁面一致
+    background = shapes.add_shape(
+        MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height
+    )
+    background.fill.solid()
+    background.fill.fore_color.rgb = RGBColor(248, 250, 252)  # 淺藍灰色背景，與總結分析頁面相同
+    background.line.fill.background()
+    
+    # 設定通用主色調
+    main_color = RGBColor(30, 144, 255)  # 預設藍色
+    logo_background_color = RGBColor(255, 255, 255)  # 預設白色背景
+    
+    # 嘗試下載和轉換圖片
+    logo_path = None
+    if app_logo_url:
+        try:
+            logo_path = download_and_convert_image(app_logo_url, app_name)
+        except Exception as e:
+            logger.error(f"Error downloading logo for app header slide: {str(e)}")
+    
+    # 垂直置中的位置計算
+    vertical_center = prs.slide_height / 2
+    logo_height = Inches(1.8)
+    title_height = Inches(1.0)
+    total_height = logo_height + Inches(0.5) + title_height  # logo + 間距 + 標題
+    
+    start_y = vertical_center - (total_height / 2)  # 從這個位置開始放置元素
+    
+    # 如果有Logo，放置在標題上方並垂直置中
+    if logo_path and os.path.exists(logo_path):
+        # 為Logo創建背景框（圓角矩形），水平置中
+        logo_width = Inches(1.8)
+        logo_left = (prs.slide_width - logo_width) / 2
+        
+        logo_box = shapes.add_shape(
+            MSO_SHAPE.ROUNDED_RECTANGLE,
+            logo_left, start_y,  # 水平置中，垂直位於計算的起始位置
+            logo_width, logo_height  # 寬度和高度
+        )
+        logo_box.fill.solid()
+        logo_box.fill.fore_color.rgb = logo_background_color
+        logo_box.line.color.rgb = main_color
+        
+        # 添加應用標誌，在框內置中
+        icon_width = Inches(1.4)
+        icon_left = logo_left + (logo_width - icon_width) / 2
+        icon_top = start_y + (logo_height - icon_width) / 2
+        
+        icon = shapes.add_picture(
+            logo_path,
+            icon_left, icon_top,  # 在框內水平和垂直置中
+            width=icon_width  # 寬度
+        )
+        
+        # 標題的位置向下移動到Logo下方
+        title_top = start_y + logo_height + Inches(0.5)
+    else:
+        # 如果沒有Logo，標題直接垂直置中
+        title_top = vertical_center - (title_height / 2)
+    
+    # 添加應用名稱標題 - 水平置中
+    title_width = Inches(10)
+    title_left = (prs.slide_width - title_width) / 2
+    
+    title_box = shapes.add_textbox(
+        title_left, title_top,
+        title_width, title_height
+    )
+    title_frame = title_box.text_frame
+    title_para = title_frame.add_paragraph()
+    
+    # 直接使用 app_name
+    title_para.text = f"{app_name} 應用程式分析"
+    title_para.font.size = Pt(40)
+    title_para.font.bold = True
+    title_para.font.color.rgb = main_color
+    title_para.alignment = PP_ALIGN.CENTER  # 水平置中對齊
+    
+    # 清理臨時文件
+    if logo_path and os.path.exists(logo_path):
+        try:
+            os.remove(logo_path)
+            original_path = os.path.join(os.path.dirname(logo_path), f"{app_name}_original")
+            if os.path.exists(original_path):
+                os.remove(original_path)
+            temp_dir = os.path.dirname(logo_path)
+            if os.path.exists(temp_dir):
+                os.rmdir(temp_dir)
+        except Exception as cleanup_error:
+            logger.warning(f"Error cleaning up temp files: {str(cleanup_error)}")
+    
+    return slide
+
+def add_app_analysis_slide(prs, app):
+    """向簡報添加應用分析頁面"""
+    # 首先添加應用標題頁
+    add_app_header_slide(prs, app['name'], app.get('logo', None))
+    
+    # 然後添加標準內容頁面
+    # App Overview
+    add_content_slide(
+        prs,
+        f"{app['name']} - 概述",
+        {
+            "基本資訊": {
+                "iOS 評分": f"{app['ratings']['ios']} ⭐",
+                "Android 評分": f"{app['ratings']['android']} ⭐",
+                "總評論數": f"{app['reviews']['count']} 則"
+            },
+            "核心功能": app['features']['core'],
+            "主要優勢": app['features']['advantages'],
+            "待改進項目": app['features']['improvements']
+        },
+        app.get('logo', None),
+        app['name']
+    )
+    
+    # App UX Analysis
+    add_content_slide(
+        prs,
+        f"{app['name']} - 用戶體驗分析",
+        {
+            "用戶體驗評分": {
+                "會員登入": f"{app['uxScores']['memberlogin']}%",
+                "搜尋功能": f"{app['uxScores']['search']}%",
+                "商品相關": f"{app['uxScores']['product']}%",
+                "結帳付款": f"{app['uxScores']['checkout']}%",
+                "客戶服務": f"{app['uxScores']['service']}%",
+                "其他功能": f"{app['uxScores']['other']}%"
+            },
+            "優勢分析": app['uxAnalysis']['strengths'],
+            "改進建議": app['uxAnalysis']['improvements'],
+            "分析摘要": app['uxAnalysis']['summary']
+        },
+        app.get('logo', None),
+        app['name']
+    )
+    
+    # App Review Analysis
+    add_content_slide(
+        prs,
+        f"{app['name']} - 評論分析",
+        {
+            "評論統計": {
+                "正面評價": f"{app['reviews']['stats']['positive']}%",
+                "負面評價": f"{app['reviews']['stats']['negative']}%"
+            },
+            "用戶好評項目": app['reviews']['analysis']['advantages'],
+            "用戶反饋問題": app['reviews']['analysis']['improvements'],
+            "評論分析摘要": app['reviews']['analysis']['summary']
+        },
+        app.get('logo', None),
+        app['name']
+    )
+
 def generate_competitive_analysis_ppt(input_file: str, output_file: str):
     try:
-        # Load input data
-        logger.info("Loading input data...")
+        # Read input data
         with open(input_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
-
-        # Create presentation with 16:9 aspect ratio
-        logger.info("Creating presentation...")
+        
+        # Create presentation
         prs = Presentation()
         set_slide_size_to_16x9(prs)
         
         # Add title slide
-        add_title_slide(prs, data["title"], data["date"])
+        add_title_slide(prs, data['title'], data['date'])
         
-        # Process each app
-        for app in data["apps"]:
-            logger.info(f"Processing app: {app['name']}")
-            
-            # Add section slide for app
-            add_section_slide(prs, app["name"])
-            
-            # App Overview
-            add_content_slide(
-                prs,
-                f"{app['name']} 概覽",
-                {
-                    "評分": {
-                        "iOS": app["ratings"]["ios"],
-                        "Android": app["ratings"]["android"]
-                    },
-                    "評論統計": {
-                        "正面評價": f"{app['reviews']['stats']['positive']}%",
-                        "負面評價": f"{app['reviews']['stats']['negative']}%"
-                    },
-                    "核心功能": app["features"]["core"],
-                    "優勢": app["features"]["advantages"],
-                    "待改進": app["features"]["improvements"]
-                }
-            )
-
-            # UX Analysis
-            add_content_slide(
-                prs,
-                f"{app['name']} 用戶體驗分析",
-                {
-                    "用戶體驗評分": {
-                        "會員登入": f"{app['uxScores']['memberlogin']}%",
-                        "搜尋功能": f"{app['uxScores']['search']}%",
-                        "商品相關": f"{app['uxScores']['product']}%",
-                        "結帳付款": f"{app['uxScores']['checkout']}%",
-                        "客戶服務": f"{app['uxScores']['service']}%",
-                        "其他": f"{app['uxScores']['other']}%"
-                    },
-                    "優勢": app["uxAnalysis"]["strengths"],
-                    "待改進": app["uxAnalysis"]["improvements"],
-                    "總結": app["uxAnalysis"]["summary"]
-                }
-            )
-
-            # Review Analysis
-            add_content_slide(
-                prs,
-                f"{app['name']} 評論分析",
-                {
-                    "優勢": app["reviews"]["analysis"]["advantages"],
-                    "待改進": app["reviews"]["analysis"]["improvements"],
-                    "總結": app["reviews"]["analysis"]["summary"]
-                }
-            )
+        # Process each app's detailed analysis with new layout
+        for app in data['apps']:
+            add_app_analysis_slide(prs, app)
+        
+        # Add summary section before ending
+        if 'summary' in data:
+            add_section_slide(prs, "總結分析")
+            add_summary_slide(prs, data['summary'])
         
         # Add ending slide
         add_ending_slide(prs)
         
         # Save presentation
-        logger.info(f"Saving presentation to {output_file}")
         prs.save(output_file)
-        logger.info("Presentation generated successfully")
+        logger.info(f"Presentation saved to {output_file}")
+        return True
         
     except Exception as e:
         logger.error(f"Error generating PPT: {str(e)}")

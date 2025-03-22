@@ -237,3 +237,101 @@ pytest test_app.py
 # 檢查容器中的語言設置
 docker exec -it <container-id> locale
 ```
+
+### 2. 'Slides' object has no attribute 'add_shape' 錯誤
+在使用 python-pptx 時，需要注意 `slide.shapes.add_shape()` 與 `shapes.add_shape()` 的區別：
+
+- **錯誤寫法**：`slide.shapes.add_shape()`
+- **正確寫法**：使用 `shapes = slide.shapes` 後再調用 `shapes.add_shape()`
+
+**示例修正**：
+```python
+# 錯誤寫法
+background = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height)
+
+# 正確寫法
+shapes = slide.shapes
+background = shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height)
+```
+
+### 3. WebP 格式圖片轉換問題
+當處理 WebP 格式的圖片時，需要確保正確轉換為 PNG 或 JPEG 格式：
+
+1. 首先安裝 Pillow 庫：
+```bash
+pip install Pillow
+```
+
+2. 使用以下代碼處理 WebP 圖片轉換：
+```python
+from PIL import Image
+from io import BytesIO
+
+def convert_webp_to_png(webp_data):
+    try:
+        image = Image.open(webp_data)
+        # 處理透明通道
+        if image.mode in ('RGBA', 'LA') or (image.mode == 'P' and 'transparency' in image.info):
+            background = Image.new('RGBA', image.size, (255, 255, 255))
+            if image.mode == 'RGBA':
+                background.paste(image, mask=image.split()[3])
+            else:
+                background.paste(image)
+            image = background.convert('RGB')
+        else:
+            image = image.convert('RGB')
+        
+        output = BytesIO()
+        image.save(output, format="PNG")
+        output.seek(0)
+        return output
+    except Exception as e:
+        logger.error(f"Error converting WebP to PNG: {str(e)}")
+        return None
+```
+
+### 4. PowerShell 和 Docker 命令執行問題
+在 Windows PowerShell 中執行 Docker 命令時，需要注意以下幾點：
+
+1. PowerShell 不支持 `&&` 連接命令，應使用分號 `;` 代替：
+```powershell
+# 錯誤
+cd directory && docker-compose up
+
+# 正確
+cd directory; docker-compose up
+```
+
+2. Windows 路徑格式在 Docker 命令中的使用：
+```powershell
+# 使用雙反斜線或單正斜線
+docker run -v C:/path/to/directory:/app image_name
+```
+
+### 5. 橫向與垂直置中布局設計
+如需實現元素在幻燈片中橫向和垂直置中，可使用以下方法：
+
+```python
+# 橫向置中計算
+element_width = Inches(2)
+element_left = (prs.slide_width - element_width) / 2
+
+# 垂直置中計算
+element_height = Inches(2)
+element_top = (prs.slide_height - element_height) / 2
+
+# 多個元素垂直排列且整體置中
+first_element_height = Inches(1.5) 
+second_element_height = Inches(1.0)
+gap = Inches(0.5)
+total_height = first_element_height + gap + second_element_height
+
+# 計算第一個元素的起始位置
+start_y = (prs.slide_height - total_height) / 2
+first_element_top = start_y
+second_element_top = start_y + first_element_height + gap
+```
+
+## 貢獻指南
+
+請參考 [CONTRIBUTING.md](CONTRIBUTING.md) 文件。

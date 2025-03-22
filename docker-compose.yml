@@ -9,4 +9,5 @@ services:
       - ./generated_ppts:/app/generated_ppts
     environment:
       - TZ=Asia/Taipei
+      - ALLOWED_ORIGINS=http://localhost:3000,https://app-reviews-ai-v3.vercel.app
     restart: unless-stopped 

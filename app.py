@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 import json
 import tempfile
 import os
@@ -8,10 +9,23 @@ from pydantic import BaseModel
 from typing import Dict, Any
 from scripts.generate_ppt import generate_competitive_analysis_ppt
 
+# Get allowed origins from environment variable
+# 如果環境變數未設置，默認允許 localhost:3000
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+
 app = FastAPI(
     title="PPT Generator API",
     description="API for generating competitive analysis PowerPoint presentations",
     version="1.0.0"
+)
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 class GenerationResponse(BaseModel):

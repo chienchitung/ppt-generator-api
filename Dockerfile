@@ -22,8 +22,18 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Create directory for generated PPTs
-RUN mkdir -p generated_ppts
+# Create directory for generated PPTs with proper permissions
+ENV STORAGE_DIR=/app/storage/generated_ppts
+RUN mkdir -p $STORAGE_DIR && \
+    chmod -R 777 $STORAGE_DIR && \
+    chown -R nobody:nogroup $STORAGE_DIR
+
+# Create a non-root user
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
 
 # Expose port
 EXPOSE 8000

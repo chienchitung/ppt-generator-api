@@ -47,17 +47,29 @@ class GenerationResponse(BaseModel):
     file_path: str
 
 @app.post("/generate-ppt/", response_model=GenerationResponse)
-async def generate_ppt(input_file: UploadFile = File(...)):
+async def generate_ppt(
+    input_file: UploadFile = File(..., description="JSON file containing presentation data")
+):
     logger.info(f"Received file: {input_file.filename}")
+    logger.info(f"Content type: {input_file.content_type}")
+    logger.info(f"Headers: {input_file.headers}")
+    
+    if not input_file.content_type.startswith('application/json'):
+        logger.warning(f"Unexpected content type: {input_file.content_type}")
+    
     try:
         # Create temporary directory for processing
         with tempfile.TemporaryDirectory() as temp_dir:
             # Save uploaded JSON file
             temp_input_path = os.path.join(temp_dir, "input.json")
             content = await input_file.read()
+            logger.info(f"Content length: {len(content)}")
             
             # Validate JSON content
             try:
+                # 嘗試解碼為字串（如果是二進制的話）
+                if isinstance(content, bytes):
+                    content = content.decode('utf-8')
                 json_content = json.loads(content)
                 logger.info("JSON content validated successfully")
                 # Log the structure of the JSON content

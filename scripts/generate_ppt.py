@@ -428,7 +428,7 @@ def add_chapter_slide(prs, chapter_data):
     # Add content sections
     sections = [
         ("關鍵發現", chapter_data["keyFindings"]),
-        ("數據支持", chapter_data["dataSupport"]),
+        ("關鍵數據", chapter_data["dataSupport"]),
         ("建議", chapter_data["recommendations"])
     ]
     

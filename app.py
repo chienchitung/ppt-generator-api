@@ -16,9 +16,9 @@ logger = logging.getLogger(__name__)
 
 # Get allowed origins from environment variable
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
-if "*" in ALLOWED_ORIGINS:
-    ALLOWED_ORIGINS = ["*"]
+CORS_ALLOW_CREDENTIALS = os.getenv("CORS_ALLOW_CREDENTIALS", "true").lower() == "true"
 logger.info(f"Configured ALLOWED_ORIGINS: {ALLOWED_ORIGINS}")
+logger.info(f"CORS_ALLOW_CREDENTIALS: {CORS_ALLOW_CREDENTIALS}")
 
 # Configure storage
 STORAGE_DIR = os.getenv("STORAGE_DIR", "generated_ppts")
@@ -35,7 +35,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
+    allow_credentials=CORS_ALLOW_CREDENTIALS,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
@@ -137,8 +137,18 @@ async def download_ppt(filename: str):
             media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
             filename=filename
         )
-        # 添加 CORS headers
-        response.headers["Access-Control-Allow-Origin"] = "*"
+        
+        # 根据环境变量设置 CORS headers
+        if "*" in ALLOWED_ORIGINS:
+            response.headers["Access-Control-Allow-Origin"] = "*"
+        else:
+            # 从请求头中获取 Origin
+            origin = request.headers.get("Origin")
+            if origin in ALLOWED_ORIGINS:
+                response.headers["Access-Control-Allow-Origin"] = origin
+                if CORS_ALLOW_CREDENTIALS:
+                    response.headers["Access-Control-Allow-Credentials"] = "true"
+        
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
         response.headers["Access-Control-Allow-Headers"] = "*"
         return response

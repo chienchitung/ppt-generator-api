@@ -9,6 +9,9 @@ from pathlib import Path
 from pydantic import BaseModel
 from typing import Dict, Any
 from scripts.generate_ppt import generate_competitive_analysis_ppt
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -16,14 +19,26 @@ logger = logging.getLogger(__name__)
 
 # Get allowed origins from environment variable
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
-CORS_ALLOW_CREDENTIALS = os.getenv("CORS_ALLOW_CREDENTIALS", "true").lower() == "true"
+if "*" in ALLOWED_ORIGINS:
+    ALLOWED_ORIGINS = ["*"]
 logger.info(f"Configured ALLOWED_ORIGINS: {ALLOWED_ORIGINS}")
-logger.info(f"CORS_ALLOW_CREDENTIALS: {CORS_ALLOW_CREDENTIALS}")
 
 # Configure storage
 STORAGE_DIR = os.getenv("STORAGE_DIR", "generated_ppts")
 os.makedirs(STORAGE_DIR, exist_ok=True)
 logger.info(f"Storage directory configured at: {STORAGE_DIR}")
+
+class HTTPSRedirectMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if request.url.scheme == "http":
+            # Log the redirect
+            logger.info(f"Redirecting {request.url} to HTTPS")
+            https_url = str(request.url).replace("http://", "https://", 1)
+            return Response(
+                status_code=301,
+                headers={"Location": https_url}
+            )
+        return await call_next(request)
 
 app = FastAPI(
     title="PPT Generator API",
@@ -31,11 +46,14 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Configure CORS
+# Add HTTPS redirect middleware
+app.add_middleware(HTTPSRedirectMiddleware)
+
+# Configure CORS with more specific settings
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=CORS_ALLOW_CREDENTIALS,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
@@ -137,19 +155,13 @@ async def download_ppt(filename: str):
             media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
             filename=filename
         )
-        
-        # 根据环境变量设置 CORS headers
-        if "*" in ALLOWED_ORIGINS:
-            response.headers["Access-Control-Allow-Origin"] = "*"
-        else:
-            # 从请求头中获取 Origin
-            origin = request.headers.get("Origin")
-            if origin in ALLOWED_ORIGINS:
-                response.headers["Access-Control-Allow-Origin"] = origin
-                if CORS_ALLOW_CREDENTIALS:
-                    response.headers["Access-Control-Allow-Credentials"] = "true"
-        
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        # Add security headers
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Content-Security-Policy"] = "default-src 'self'"
+        # Add CORS headers
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
         response.headers["Access-Control-Allow-Headers"] = "*"
         return response
     except Exception as e:

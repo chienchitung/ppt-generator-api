@@ -15,6 +15,11 @@ ENV LANG zh_TW.UTF-8
 ENV LANGUAGE zh_TW:zh
 ENV LC_ALL zh_TW.UTF-8
 
+# Set environment variables for HTTPS
+ENV FORWARDED_ALLOW_IPS="*"
+ENV SECURE_COOKIES="true"
+ENV FORCE_HTTPS="true"
+
 # Copy requirements and install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
